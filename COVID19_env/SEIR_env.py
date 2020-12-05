@@ -20,7 +20,7 @@ import pandas as pd
 
 from rpy2.robjects.packages import STAP
 
-class SEIR_env(gym.Env):
+class SEIR_v0(gym.Env):
   """
   Description:
         Each city's population is broken down into four compartments --
