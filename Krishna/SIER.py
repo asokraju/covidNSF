@@ -1,4 +1,4 @@
-class SEIR_env(gym.Env):
+class SEIR_v0(gym.Env):
     """
     Description:
             Each city's population is broken down into four compartments --
@@ -67,6 +67,7 @@ class SEIR_env(gym.Env):
         self.theta        = np.full(shape=4, fill_value=2, dtype=float)#np.array([2, 2, 2, 2], dtype = float) #choose a random around 1
         self.d            = np.full(shape=4, fill_value=1/24, dtype=float)#np.array([1/24, 1/24, 1/24, 1/24], dtype = float) # 1 hour or 1/24 days
 
+        #crowd density = np.full(shape=4, fill_value=6, dtype=float)
         self.beta         = self.theta * self.d * np.full(shape=4, fill_value=6, dtype=float) #needs to be changed
         self.sigma        = 1.0/5  # needds to be changed
         self.gamma        = 0.05 #needs to be changed
@@ -123,16 +124,21 @@ class SEIR_env(gym.Env):
         return np.array([new_S, new_E, new_I, new_R], dtype =float)
 
     def step(self, action):
+
         self.daynum += 1
 
         for _ in range(self.time_steps):
             self.state = self.mini_step(action)
 
-        # Reward
-        economicCost = -np.sum(action)
-        publichealthCost   = -0.00001*abs(self.state[2])
+        # Costs
+        # action represent the crowd density, so decrease in crowd density increases the economic cost
+        economicCost = - (2 / (self.action_max*4*1.5)) * np.sum(action)
+
+        # Public health Cost increases with increase in Infected people.
+        publichealthCost   =  0.00002*abs(self.state[2])
         
-        reward = self.weight * economicCost + (1 - self.weight)* publichealthCost
+        #Rewards
+        reward = - self.weight * economicCost - (1 - self.weight) * publichealthCost
 
         # Check if episode is over
         done = bool(self.state[2] < 0.5 or self.daynum == self.sim_length)
