@@ -1,3 +1,7 @@
+import numpy as np
+import gym
+from gym import spaces
+
 class SEIR_v0(gym.Env):
     """
     Description:
