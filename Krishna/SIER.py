@@ -55,7 +55,7 @@ class SEIR_v0(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self, discretizing_time = 5, sampling_time = 1, action_max = 2, sim_length = 100):
-        super(SEIR_env, self).__init__()
+        super(SEIR_v0, self).__init__()
 
         self.dt           = discretizing_time/(24*60)
         self.Ts           = sampling_time
