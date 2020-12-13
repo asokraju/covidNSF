@@ -1,8 +1,11 @@
 import numpy as np
 import gym
 from gym import spaces
+from gym.utils import seeding
+import matplotlib.pyplot as plt
 
-class SEIR_v0(gym.Env):
+
+class SEIR_v0_1(gym.Env):
     """
     Description:
             Each city's population is broken down into four compartments --
@@ -10,7 +13,6 @@ class SEIR_v0(gym.Env):
             COVID-19.
 
     Source:
-            SEIR model from https://github.com/UW-THINKlab/SEIR/
             Code modeled after cartpole.py from
             github.com/openai/gym/blob/master/gym/envs/classic_control/cartpole.py
     
@@ -29,56 +31,60 @@ class SEIR_v0(gym.Env):
             
     
     Actions*:
-            Type: Box(3,), min=-1 max=0
+            Type: Box(4,), min=0 max=2
             Num     Action                                   Change in model
-            0       reductions in workplace activity         affect transmission rate
-            1       reductions in grocery shopping           affect transmission rate     
-            2       rerductions in retail shopping           affect transmission rate
+            0       Lockdown                                 affect transmission rate
+            1       Social distancing                        affect transmission rate     
+            2       No Social distancing                     affect transmission rate
             
 
     Reward:
             reward = lambda * economic cost + (1-lambda) * public health cost
             
             Economic cost:
-                sum(action)
+                - sum(action)
             Health cost:
-                -0.00001* number of infected
+                -0.00002* number of infected
             lambda:
                 a user defined weight. Default 0.5
 
     Episode Termination:
             Episode length (time) reaches specified maximum (end time)
-            The end of analysis period is 120 days
+            The end of analysis period is 100 days
     """
 
 
     metadata = {'render.modes': ['human']}
 
     def __init__(self, discretizing_time = 5, sampling_time = 1, action_max = 2, sim_length = 100):
-        super(SEIR_v0, self).__init__()
+        super(SEIR_v0_1, self).__init__()
 
         self.dt           = discretizing_time/(24*60)
         self.Ts           = sampling_time
-        self.time_steps = int((self.Ts) / self.dt)
+        self.time_steps   = int((self.Ts) / self.dt)
+        self.n_agents     = 1
 
         self.popu         = 100000
         self.current      = 1
         self.pred         = 1
         self.trainNoise   = False
-        self.weight       = 0.8 #reward weighting
+        self.weight       = 0.5 #reward weighting
 
         #model paramenters
-        self.theta        = np.full(shape=4, fill_value=2, dtype=float)#np.array([2, 2, 2, 2], dtype = float) #choose a random around 1
-        self.d            = np.full(shape=4, fill_value=1/24, dtype=float)#np.array([1/24, 1/24, 1/24, 1/24], dtype = float) # 1 hour or 1/24 days
+        self.theta        = np.full(shape=self.n_agents, fill_value=2, dtype=float)#np.array([2, 2, 2, 2], dtype = float) #choose a random around 1
+        self.d            = np.full(shape=self.n_agents, fill_value=1/24, dtype=float)#np.array([1/24, 1/24, 1/24, 1/24], dtype = float) # 1 hour or 1/24 days
 
         #crowd density = np.full(shape=4, fill_value=6, dtype=float)
-        self.beta         = self.theta * self.d * np.full(shape=4, fill_value=6, dtype=float) #needs to be changed
+        self.beta         = self.theta * self.d * np.full(shape=self.n_agents, fill_value=1, dtype=float) #needs to be changed
         self.sigma        = 1.0/5  # needds to be changed
         self.gamma        = 0.05 #needs to be changed
 
-        self.action_max   = action_max
+        self.action_max   = action_max     # Maximum value of action
+        self.n_actions    = action_max + 1 #total number of actions 
+
         #gym action space and observation space
-        self.action_space = spaces.Box(low = 0, high = 6, shape = (4,), dtype = np.float64)
+        self.action_space = spaces.MultiDiscrete([self.n_actions for _ in range(self.n_agents)])
+        #spaces.Box(low = 0, high = self.action_max, shape = (4,), dtype = np.float64)
         self.observation_space = spaces.Box(0, np.inf, shape=(4,), dtype=np.float64)
 
         #Total number of simulation days
@@ -100,7 +106,7 @@ class SEIR_v0(gym.Env):
         return [seed]
     
     def get_state(self):
-        self.state = np.array([self.popu-1, 0, 1, 0], dtype=float)
+        self.state = np.array([self.popu-200-1000, 1000, 200, 0], dtype=float)
 
     def set_state(self, state):
         tot_state = sum(state)
@@ -136,7 +142,7 @@ class SEIR_v0(gym.Env):
 
         # Costs
         # action represent the crowd density, so decrease in crowd density increases the economic cost
-        economicCost = - (2 / (self.action_max*4*1.5)) * np.sum(action)
+        economicCost = - (2 / (self.action_max*self.n_agents*1.5)) * np.sum(action)
 
         # Public health Cost increases with increase in Infected people.
         publichealthCost   =  0.00002*abs(self.state[2])
@@ -149,7 +155,7 @@ class SEIR_v0(gym.Env):
 
         # saving the states and actions in the memory buffers
         self.state_trajectory.append(list(self.state))
-        self.action_trajectory.append(list(action))
+        self.action_trajectory.append(action)
         return self.state, reward, done, {}
         
     def reset(self):
@@ -166,11 +172,10 @@ class SEIR_v0(gym.Env):
     
     def plot(self, savefig_filename=None):
         title_states = ['Susceptible', 'Exposed', 'Infected', 'Removed']
-        title_actions = ['rho_1', 'rho_2', 'rho_3', 'rho_4']
         test_steps = self.daynum
         time = np.array(range(test_steps), dtype=np.float32)*self.Ts
         test_obs_reshape = np.concatenate(self.state_trajectory).reshape((test_steps ,self.observation_space.shape[0]))
-        test_act_reshape = np.concatenate(self.action_trajectory).reshape((test_steps ,self.action_space.shape[0]))
+        #test_act_reshape = self.action_trajectory#np.concatenate(self.action_trajectory).reshape((test_steps ,self.action_space.shape[0]))
         state_dim = self.observation_space.shape[0]
         act_dim = self.action_space.shape[0]
         #total_dim = self.observation_space.shape[0] + self.action_space.shape[0]
@@ -182,14 +187,6 @@ class SEIR_v0(gym.Env):
             ax[i].set_title(title_states[i], fontsize=15)
             ax[i].set_xlabel('Time', fontsize=10)
             ax[i].set_ylim(0, self.popu)
-            ax[i].set_label('Label via method')
-            ax[i].legend()
-        plt.show()
-        fig, ax = plt.subplots(nrows=1, ncols=act_dim, figsize = (24,4))
-        for i in range(act_dim):
-            ax[i].plot(time, test_act_reshape, label=title_actions[i])
-            ax[i].set_xlabel('Time', fontsize=10)
-            ax[i].set_title(title_actions[i], fontsize=15)
             ax[i].set_label('Label via method')
             ax[i].legend()
         plt.show()
